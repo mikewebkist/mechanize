@@ -25,9 +25,27 @@ import _rfc3986
 import _sockettimeout
 import _urllib2_fork
 from _util import isstringlike
+import ssl, socket
 
 open_file = open
 
+class HTTPSConnectionV3(httplib.HTTPSConnection):
+    def __init__(self, *args, **kwargs):
+        httplib.HTTPSConnection.__init__(self, *args, **kwargs)
+
+    def connect(self):
+        sock = socket.create_connection((self.host, self.port), self.timeout)
+        if self._tunnel_host:
+            self.sock = sock
+            self._tunnel()
+        try:
+            self.sock = ssl.wrap_socket(sock, self.key_file, self.cert_file, ssl_version=ssl.PROTOCOL_SSLv3)
+        except ssl.SSLError, e:
+            self.sock = ssl.wrap_socket(sock, self.key_file, self.cert_file, ssl_version=ssl.PROTOCOL_SSLv23)
+
+class HTTPSHandlerV3(urllib2.HTTPSHandler):
+    def https_open(self, req):
+        return self.do_open(HTTPSConnectionV3, req)
 
 class ContentTooShortError(urllib2.URLError):
     def __init__(self, reason, result):
@@ -370,7 +388,8 @@ class OpenerFactory:
         _urllib2_fork.HTTPErrorProcessor,
         ]
     if hasattr(httplib, 'HTTPS'):
-        default_classes.append(_urllib2_fork.HTTPSHandler)
+        default_classes.append(HTTPSHandlerV3)
+        # default_classes.append(_urllib2_fork.HTTPSHandler)
     handlers = []
     replacement_handlers = []
 
